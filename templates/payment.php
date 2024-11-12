@@ -325,7 +325,35 @@
 		// Paying customer details section
 		echo $this->get_paying_customer_details_html();
 	?>
+// Adicione após o bloco de detalhes do cliente
+<div class="form-row">
+    <label for="billing_cpf">
+        <?php esc_html_e('CPF', 'woocommerce-pos'); ?>
+        <span class="required">*</span>
+    </label>
+    <input 
+        type="text" 
+        class="input-text" 
+        name="billing_cpf" 
+        id="billing_cpf" 
+        placeholder="000.000.000-00"
+        maxlength="14"
+        required
+    />
+</div>
 
+<script>
+// Adicione este script para formatar e validar o CPF
+document.getElementById('billing_cpf').addEventListener('input', function(e) {
+    let value = e.target.value.replace(/\D/g, '');
+    if (value.length <= 11) {
+        value = value.replace(/(\d{3})(\d)/, '$1.$2');
+        value = value.replace(/(\d{3})(\d)/, '$1.$2');
+        value = value.replace(/(\d{3})(\d{1,2})$/, '$1-$2');
+    }
+    e.target.value = value;
+});
+</script>
 	<?php
 		// Coupon form section
 		echo $this->get_coupon_form_html();
@@ -343,6 +371,7 @@
 		);
 		?>
 </div>
+  
 
 <?php
 if ( ! $this->disable_wp_footer ) {
