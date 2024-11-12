@@ -24,6 +24,7 @@ use WP_Error;
  * @NOTE: methods not prefixed with wcpos_ will override WC_REST_Customers_Controller methods
  */
 class Customers_Controller extends WC_REST_Customers_Controller {
+	
 	use Traits\Uuid_Handler;
 	use Traits\WCPOS_REST_API;
 	use Traits\Query_Helpers;
@@ -57,6 +58,89 @@ class Customers_Controller extends WC_REST_Customers_Controller {
 	 * @param string          $route           Route matched for the request.
 	 * @param array           $handler         Route handler used for the request.
 	 */
+
+	 /**
+ * Valida o CPF
+ *
+ * @param string $cpf
+ * @return bool|WP_Error
+ */
+private function validate_cpf($cpf) {
+    // Remove caracteres não numéricos
+    $cpf = preg_replace('/[^0-9]/', '', $cpf);
+    
+    // Verifica se tem 11 dígitos
+    if (strlen($cpf) != 11) {
+        return new WP_Error(
+            'wcpos_invalid_cpf',
+            __('CPF inválido - deve conter 11 dígitos', 'woocommerce-pos'),
+            array('status' => 400)
+        );
+    }
+    
+    // Verifica se todos os dígitos são iguais
+    if (preg_match('/(\d)\1{10}/', $cpf)) {
+        return new WP_Error(
+            'wcpos_invalid_cpf',
+            __('CPF inválido', 'woocommerce-pos'),
+            array('status' => 400)
+        );
+    }
+    
+    // Calcula e verifica os dígitos verificadores
+    for ($t = 9; $t < 11; $t++) {
+        for ($d = 0, $c = 0; $c < $t; $c++) {
+            $d += $cpf[$c] * (($t + 1) - $c);
+        }
+        $d = ((10 * $d) % 11) % 10;
+        if ($cpf[$c] != $d) {
+            return new WP_Error(
+                'wcpos_invalid_cpf',
+                __('CPF inválido', 'woocommerce-pos'),
+                array('status' => 400)
+            );
+        }
+    }
+    
+    return true;
+}
+
+public function create_item_permissions_check($request) {
+	$permission = parent::create_item_permissions_check($request);
+	
+	if (is_wp_error($permission)) {
+		return $permission;
+	}
+	
+	// Validar CPF na criação
+	if (!empty($request['billing']['cpf'])) {
+		$cpf_validation = $this->validate_cpf($request['billing']['cpf']);
+		if (is_wp_error($cpf_validation)) {
+			return $cpf_validation;
+		}
+	}
+	
+	return true;
+}
+
+public function update_item_permissions_check($request) {
+	$permission = parent::update_item_permissions_check($request);
+	
+	if (is_wp_error($permission)) {
+		return $permission;
+	}
+	
+	// Validar CPF na atualização
+	if (!empty($request['billing']['cpf'])) {
+		$cpf_validation = $this->validate_cpf($request['billing']['cpf']);
+		if (is_wp_error($cpf_validation)) {
+			return $cpf_validation;
+		}
+	}
+	
+	return true;
+}
+}
 	public function wcpos_dispatch_request( $dispatch_result, WP_REST_Request $request, $route, $handler ) {
 		$this->wcpos_request = $request;
 
@@ -78,15 +162,34 @@ class Customers_Controller extends WC_REST_Customers_Controller {
 	 * Add custom fields to the product schema.
 	 */
 	public function get_item_schema() {
-		$schema = parent::get_item_schema();
+        $schema = parent::get_item_schema();
 
-		// Check and remove email format validation from the billing property
-		if ( isset( $schema['properties']['billing']['properties']['email']['format'] ) ) {
-			unset( $schema['properties']['billing']['properties']['email']['format'] );
+		// Adicionar campo CPF ao schema de billing
+		$schema['properties']['billing']['properties']['cpf'] = array(
+			'description' => __('CPF do cliente', 'woocommerce-pos'),
+			'type' => 'string',
+			'context' => array('view', 'edit'),
+			'required' => false
+		);
+	
+		// Remove validação de email como já existente no código
+		if (isset($schema['properties']['billing']['properties']['email']['format'])) {
+			unset($schema['properties']['billing']['properties']['email']['format']);
 		}
-
+	
 		return $schema;
 	}
+        
+        // Adicionar campo CPF
+        $schema['properties']['billing']['properties']['cpf'] = array(
+            'description' => __('CPF do cliente', 'woocommerce-pos'),
+            'type'        => 'string',
+            'context'     => array('view', 'edit'),
+        );
+        
+        return $schema;
+    }
+}
 
 	/**
 	 * Add extra fields to WP_REST_Controller::get_collection_params().
